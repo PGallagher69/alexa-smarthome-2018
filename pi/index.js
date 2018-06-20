@@ -1,10 +1,18 @@
 var AWS = require("aws-sdk");
 var awsIot = require('aws-iot-device-sdk');
 var gpio = require('rpi-gpio');
+var fs = require("fs");
+var Raspistill = require('node-raspistill').Raspistill;
 
 SetupGPIO();
 
 AWS.config.loadFromPath("./config.json");
+
+var s3 = new AWS.S3();
+
+var myBucket = "<Your Bucket Name>";                                                      // *********************** Change **********************
+var myKey = "demo.jpg";
+var photoPath = "./photos/image.jpg";
 
 var thingName = "<Your Thing Name>";                                                      // *********************** Change **********************
 var keypath = "./certs/<Your Certifcate Number>-private.pem.key";                         // *********************** Change **********************
@@ -152,5 +160,66 @@ function SetupGPIO()
   gpio.setup(40, gpio.DIR_HIGH, function() {
     
   }); 
+
+  gpio.on('change', function(channel, value) {
+    takePhoto();
+    console.log('Channel ' + channel + ' value is now ' + value);
+  });
+  gpio.setup(3, gpio.DIR_IN, gpio.EDGE_RISING);
   
 }
+
+function takePhoto() {  
+
+  const piStillCamera = new Raspistill({
+      fileName: photoPath,
+      verticalFlip: true,
+      width: 800,
+      height: 600
+  });
+
+  piStillCamera.takePhoto('image')
+  .then((photo) => {
+      console.log('took first photo', photo);
+      analysePhoto();    
+  })
+  .catch((error) => {
+      console.error('something bad happened', error);
+  });   
+
+};
+
+function analysePhoto() {
+
+fs.readFile(photoPath, function(err, data) {
+  if (err) {
+    throw err;
+  }
+
+  params = { Bucket: myBucket, Key: myKey, Body: data };
+
+  try {
+    s3.deleteObject(myKey);
+  } catch (ex) {
+    console.log(ex);
+  }
+
+  s3.putObject(params, function(err, data) {
+    if (err) {
+      console.log(err);
+    } else {
+      console.log("Successfully uploaded data to myBucket/myKey");
+
+      var params = {
+        Attributes: ["ALL"],
+        Image: {
+          S3Object: {
+            Bucket: myBucket,
+            Name: myKey
+          }
+        }
+      };        
+    }
+  });
+});
+};

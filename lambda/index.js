@@ -4,6 +4,11 @@
 const Alexa = require("ask-sdk");
 const https = require("https");
 let AWS = require("aws-sdk");
+let s3 = new AWS.S3({ apiVersion: "2006-03-01" });
+let rekognition = new AWS.Rekognition();
+
+var myBucket = "<Your S3 Bucket Name>";                         // *********************** Change **********************
+var myKey = "demo.jpg";
 
 const config = {};
 config.IOT_BROKER_ENDPOINT = "<Your Thing HTTP Reset Endpoint>"; // also called the REST API endpoint
@@ -223,11 +228,21 @@ const WhosThere_Handler =  {
 
         let say = 'Hello from WhosThere. ';
 
-
-        return responseBuilder
-            .speak(say)
-            .reprompt('try again, ' + say)
-            .getResponse();
+        return new Promise(resolve => {
+            analysePhoto((status) => {
+              let speechOutput = "";
+      
+              if (status) {
+                speechOutput = status;
+              } else {
+                speechOutput = "Couldn't check the door";
+              }
+      
+              handlerInput.attributesManager.setSessionAttributes(sessionAttributes);
+      
+              resolve(handlerInput.responseBuilder.speak(speechOutput).getResponse());
+            });
+          }); 
     },
 };
 
@@ -327,7 +342,55 @@ function updateShadow(device, desiredState, callback) {
         callback("ok, the " + device + " is " + desiredState);
       }
     });
-  }
+}
+
+function analysePhoto(callback) {
+    
+    let say = "";
+  
+    rekognition.config.loadFromPath("./config.json");
+  
+    var params = {
+        Attributes: ["ALL"],
+        Image: {
+          S3Object: {
+            Bucket: myBucket,
+            Name: myKey
+          }
+        }
+      };
+  
+    try {
+      rekognition.detectFaces(params, function(err, data) {
+        if (err) {
+          console.log(err, err.stack); // an error occurred
+          say = "An error occurred";
+        } else {
+          console.log(JSON.stringify(data, null, "\t")); // successful response
+  
+          console.log("Getting Face Details");
+  
+          let gender = data.FaceDetails[0].Gender.Value;
+          let lowAge = data.FaceDetails[0].AgeRange.Low;
+          let highAge = data.FaceDetails[0].AgeRange.High;
+          let mainEmotion = data.FaceDetails[0].Emotions[0].Type;
+          
+          say = "A " + gender + " between " + lowAge + " and " + highAge + " years old, who is " + mainEmotion + " is at the door";
+  
+          console.log(say);
+  
+        }
+  
+        callback(say);
+        
+      });
+  
+    } catch (ex) {
+      console.log(ex);
+      say = "An error occurred";
+    }
+  
+};
 
 function capitalize(myString) {
 
