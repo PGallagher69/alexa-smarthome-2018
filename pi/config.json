@@ -1,0 +1,4 @@
+{ "accessKeyId": "<Your IAM User Access Key ID>", 
+    "secretAccessKey": "<You IAM User Secret Access Key", 
+    "region": "eu-west-1" }
+    
